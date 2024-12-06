@@ -1,0 +1,9 @@
+{
+  "editor.formatOnSave": true,
+  "eslint.format.enable": false,
+  "prettier.resolveGlobalModules": true,
+  "prettier.printWidth": 120,
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+}
