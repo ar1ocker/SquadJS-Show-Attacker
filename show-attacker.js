@@ -24,6 +24,11 @@ export default class ShowAttacker extends BasePlugin {
         description: "Commands to respond to attack",
         default: ["reply", "отомстить", "мстя"],
       },
+      number_of_messages_to_victim: {
+        required: false,
+        description: "The number of messages that will be sent to the victim",
+        default: 1,
+      },
     };
   }
 
@@ -71,7 +76,7 @@ export default class ShowAttacker extends BasePlugin {
 
     if (data.teamkill) {
       await Promise.all([
-        this.warn(data.victim.steamID, `Ты убит игроком твоей команды ${data.attacker.name}`, 2),
+        this.warn(data.victim.steamID, `Ты убит игроком твоей команды ${data.attacker.name}`, 1),
         this.warn(data.attacker.steamID, `Ты убил союзника! ${data.victim.name}. Извинись перед ним!`, 2),
       ]);
       return;
@@ -83,13 +88,13 @@ export default class ShowAttacker extends BasePlugin {
       await this.warn(
         data.victim.steamID,
         `Ты убит врагом ${data.attacker.name} с ${attackerPlaytimeObj.playtime.toFixed(0)} часами\n\n!reply ТЕКСТ отправит ему сообщение`,
-        2
+        this.options.number_of_messages_to_victim
       );
     } else {
       await this.warn(
         data.victim.steamID,
         `Ты убит врагом ${data.attacker.name}\n\n!reply ТЕКСТ отправит ему сообщение`,
-        2
+        this.options.number_of_messages_to_victim
       );
     }
 
@@ -100,13 +105,13 @@ export default class ShowAttacker extends BasePlugin {
         await this.warn(
           data.attacker.steamID,
           `Ты убил игрока ${data.victim.name} с ${victimPlaytimeObj.playtime.toFixed(0)} часами\n\nПродолжай :-) Это сообщение есть только на seed`,
-          2
+          1
         );
       } else {
         await this.warn(
           data.attacker.steamID,
           `Ты убил игрока ${data.victim.name}\n\nПродолжай :-) Это сообщение есть только на seed`,
-          2
+          1
         );
       }
     }
