@@ -89,6 +89,7 @@ export default class ShowAttacker extends BasePlugin {
 
     this.onWound = this.onWound.bind(this);
     this.sendMessageToAttacker = this.sendMessageToAttacker.bind(this);
+    this.getPlayerName = this.getPlayerName.bind(this);
   }
 
   async prepareToMount() {
@@ -201,10 +202,12 @@ export default class ShowAttacker extends BasePlugin {
     const attacker = this.lastAttacker.get(data.player.steamID);
 
     if (attacker) {
-      const attackerName = await this.getPlayerName(attacker);
-
       this.lastAttacker.delete(data.player.steamID);
-      await this.warn(attacker.steamID, `${data.player.name} передал: ${data.message}`, 2);
+
+      const attackerName = await this.getPlayerName(attacker);
+      const playerName = await this.getPlayerName(data.player);
+
+      await this.warn(attacker.steamID, `${playerName} передал: ${data.message}`, 2);
       await this.warn(data.player.steamID, `Твоё сообщение передано игроку ${attackerName}!`);
     } else {
       await this.warn(data.player.steamID, `Некому передавать то`);
