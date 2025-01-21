@@ -32,6 +32,11 @@ export default class ShowAttacker extends BasePlugin {
         description: "Whether to user alter name system",
         default: true,
       },
+      use_alter_labels: {
+        required: false,
+        description: "Whether to user alter label system",
+        default: true,
+      },
       update_name_commands: {
         required: false,
         description: "Commands for update alter names",
@@ -42,14 +47,37 @@ export default class ShowAttacker extends BasePlugin {
         description: "Commands for remove alternative names",
         default: ["сброситьимя", "removename"],
       },
-      show_my_name_commands: {
+      show_real_attacker_name_commands: {
         required: false,
-        description: "Commands for show user's name",
-        default: ["моеимя", "showname", "myname", "моёимя"],
+        description: "Commands for show real attacker's name",
+        default: ["настоящееимя", "realname"],
       },
+      update_label_commands: {
+        required: false,
+        description: "Commands for update label",
+        default: ["подпись", "label"],
+      },
+      remove_label_commands: {
+        required: false,
+        description: "Commands for remove label",
+        default: ["удалитьподпись", "removelabel"],
+      },
+
+      show_my_message_commands: {
+        required: false,
+        description: "Commands for show full user's message",
+        default: ["моесообщение", "showmessage", "mymessage", "моёсообщение"],
+      },
+
       max_name_length: {
         required: false,
-        description: "The max alter player name",
+        description: "The max chars in player name",
+        default: 100,
+      },
+
+      max_label_length: {
+        required: false,
+        description: "The max chars in label",
         default: 100,
       },
 
@@ -58,6 +86,7 @@ export default class ShowAttacker extends BasePlugin {
         description: "The number of messages that will be sent to the victim",
         default: 1,
       },
+
       database: {
         required: false,
         connector: "sequelize",
@@ -70,26 +99,27 @@ export default class ShowAttacker extends BasePlugin {
   constructor(server, options, connectors) {
     super(server, options, connectors);
 
-    if (this.options.use_alter_names) {
-      this.playerAlterName = this.options.database.define(
-        "ShowAttacker_PlayerAlterName",
-        {
-          steamID: { type: DataTypes.STRING, allowNull: false, unique: true },
-          name: { type: DataTypes.TEXT, allowNull: false },
-        },
-        {
-          tableName: "ShowAttacker_PlayerAlterNames",
-        }
-      );
-    }
+    this.playerAlterName = this.options.database.define(
+      "ShowAttacker_PlayerAlterName",
+      {
+        steamID: { type: DataTypes.STRING, allowNull: false, unique: true },
+        name: { type: DataTypes.TEXT },
+        label: { type: DataTypes.TEXT },
+      },
+      {
+        tableName: "ShowAttacker_PlayerAlterNames",
+      }
+    );
 
     this.steam_api = new PlaytimeSearcher(this.options.steam_key);
 
     this.lastAttacker = new Map();
 
+    this.playersWounds = new Map();
+
     this.onWound = this.onWound.bind(this);
     this.sendMessageToAttacker = this.sendMessageToAttacker.bind(this);
-    this.getPlayerName = this.getPlayerName.bind(this);
+    this.getPlayerFromDB = this.getPlayerFromDB.bind(this);
   }
 
   async prepareToMount() {
@@ -99,40 +129,71 @@ export default class ShowAttacker extends BasePlugin {
   }
 
   async mount() {
-    this.server.on("PLAYER_WOUNDED", async (data) => {
-      if (data.attacker && data.victim) {
-        await this.onWound(data);
+    this.server.on("NEW_GAME", (data) => {
+      this.playersWounds.clear();
+    });
+
+    this.server.on("PLAYER_WOUNDED", (data) => {
+      if (data.attacker?.steamID && data.victim?.steamID) {
+        this.onWound(data);
       }
     });
 
     for (const command of this.options.commands) {
       this.server.on(`CHAT_COMMAND:${command}`, (data) => {
-        if (data.message && data.player) {
+        if (data.message && data.player?.steamID) {
           this.sendMessageToAttacker(data);
         }
       });
     }
 
+    if (this.options.use_alter_labels || this.options.use_alter_names) {
+      for (const command of this.options.show_my_message_commands) {
+        this.server.on(`CHAT_COMMAND:${command}`, (data) => {
+          if (data.player?.steamID) {
+            this.showMyMessage(data);
+          }
+        });
+      }
+    }
+
     if (this.options.use_alter_names) {
       for (const command of this.options.update_name_commands) {
         this.server.on(`CHAT_COMMAND:${command}`, (data) => {
-          if (data.message && data.player) {
+          if (data.message && data.player?.steamID) {
             this.updateName(data);
           }
         });
       }
-
       for (const command of this.options.remove_name_commands) {
         this.server.on(`CHAT_COMMAND:${command}`, (data) => {
-          if (data.player) {
+          if (data.player?.steamID) {
             this.removeName(data);
           }
         });
       }
-      for (const command of this.options.show_my_name_commands) {
+      for (const command of this.options.show_real_attacker_name_commands) {
         this.server.on(`CHAT_COMMAND:${command}`, (data) => {
-          if (data.player) {
-            this.showMyName(data);
+          if (data.player?.steamID) {
+            this.showRealAttackerName(data);
+          }
+        });
+      }
+    }
+
+    if (this.options.use_alter_labels) {
+      for (const command of this.options.update_label_commands) {
+        this.server.on(`CHAT_COMMAND:${command}`, (data) => {
+          if (data.message && data.player?.steamID) {
+            this.updateLabel(data);
+          }
+        });
+      }
+
+      for (const command of this.options.remove_label_commands) {
+        this.server.on(`CHAT_COMMAND:${command}`, (data) => {
+          if (data.player?.steamID) {
+            this.removeLabel(data);
           }
         });
       }
@@ -152,71 +213,98 @@ export default class ShowAttacker extends BasePlugin {
 
     await this.warn(
       data.player.steamID,
-      `Обновили твоё имя\n\n!${this.options.remove_name_commands[0]}\n!${this.options.show_my_name_commands[0]}`
+      `Обновили твоё имя\n\n!${this.options.remove_name_commands[0]}\n!${this.options.show_my_message_commands[0]}`
     );
 
     this.verbose(1, `Игрок ${data.player.steamID} обновил имя на ${data.message}`);
   }
 
-  async removeName(data) {
-    await this.playerAlterName.destroy({
-      where: {
-        steamID: data.player.steamID,
-      },
-    });
-
-    await this.warn(data.player.steamID, "Вернули тебе стандартное имя");
-    this.verbose(1, `Игрок ${data.player.steamID} сбросил имя`);
-  }
-
-  async showMyName(data) {
-    const playerName = await this.playerAlterName.findOne({
-      where: {
-        steamID: data.player.steamID,
-      },
-    });
-
-    if (playerName === null) {
-      await this.warn(data.player.steamID, "У вас стандартное имя по Steam");
+  async updateLabel(data) {
+    if (data.message.length > this.options.max_label_length) {
+      await this.warn(data.player.steamID, `Максимальная длина подписи ${this.options.max_label_length}`);
       return;
     }
 
-    await this.warn(data.player.steamID, `Ваше текущее имя: ${playerName.name}`);
-  }
-
-  async getPlayerName(player) {
-    const alterPlayerName = await this.playerAlterName.findOne({
-      where: {
-        steamID: player.steamID,
-      },
+    await this.playerAlterName.upsert({
+      steamID: data.player.steamID,
+      label: data.message,
     });
 
-    if (alterPlayerName) {
-      return alterPlayerName.name;
+    await this.warn(
+      data.player.steamID,
+      `Обновили твою подпись\n\n!${this.options.remove_label_commands[0]}\n!${this.options.show_my_message_commands[0]}`
+    );
+
+    this.verbose(1, `Игрок ${data.player.steamID} обновил свою подпись на ${data.message}`);
+  }
+
+  async removeName(data) {
+    await this.playerAlterName.upsert({
+      steamID: data.player.steamID,
+      name: null,
+    });
+
+    await this.warn(data.player.steamID, "Вернули тебе стандартное имя");
+
+    this.verbose(1, `Игрок ${data.player.steamID} сбросил имя`);
+  }
+
+  async removeLabel(data) {
+    await this.playerAlterName.upsert({
+      steamID: data.player.steamID,
+      label: null,
+    });
+
+    await this.warn(data.player.steamID, "Вернули тебе стандартную подпись");
+
+    this.verbose(1, `Игрок ${data.player.steamID} сбросил подпись`);
+  }
+
+  async showMyMessage(data) {
+    await this.warn(data.player.steamID, await this.assembleAttackerMessage(data.player));
+  }
+
+  async showRealAttackerName(data) {
+    const attacker = this.lastAttacker.get(data.player.steamID);
+
+    if (attacker) {
+      await this.warn(data.player.steamID, `Реальное имя твоего последнего убийцы: ${attacker.name}`);
     } else {
-      return player.name;
+      await this.warn(data.player.steamID, "Не нашли твоего последнего убийцу");
     }
   }
 
   async sendMessageToAttacker(data) {
     const attacker = this.lastAttacker.get(data.player.steamID);
 
-    if (attacker) {
-      this.lastAttacker.delete(data.player.steamID);
-
-      const attackerName = await this.getPlayerName(attacker);
-      const playerName = await this.getPlayerName(data.player);
-
-      await this.warn(attacker.steamID, `${playerName} передал: ${data.message}`, 2);
-      await this.warn(data.player.steamID, `Твоё сообщение передано игроку ${attackerName}!`);
-    } else {
-      await this.warn(data.player.steamID, `Некому передавать то`);
+    if (!attacker) {
+      await this.warn(data.player.steamID, `Не нашли твоего последнего убийцу`);
+      return;
     }
+
+    if (attacker.isReplySent) {
+      await this.warn(data.player.steamID, `Ты уже отправлял сообщение`);
+      return;
+    }
+
+    attacker.isReplySent = true;
+
+    let attackerName;
+    let playerName;
+
+    if (this.options.use_alter_names) {
+      attackerName = (await this.getPlayerFromDB(attacker.steamID))?.name || attacker.name;
+      playerName = (await this.getPlayerFromDB(data.player.steamID))?.name || data.player.name;
+    } else {
+      attackerName = attacker.name;
+      playerName = data.player.name;
+    }
+
+    await this.warn(attacker.steamID, `${playerName} передал: ${data.message}`, 2);
+    await this.warn(data.player.steamID, `Твоё сообщение передано игроку ${attackerName}!`);
   }
 
   async onWound(data) {
-    this.lastAttacker.set(data.victim.steamID, { ...data.attacker });
-
     if (data.teamkill) {
       await Promise.all([
         this.warn(data.victim.steamID, `Ты убит игроком твоей команды ${data.attacker.name}`, 1),
@@ -225,40 +313,73 @@ export default class ShowAttacker extends BasePlugin {
       return;
     }
 
-    const attackerPlaytimeObj = await this.steam_api.getPlaytimeByGame(data.attacker.steamID, SQUAD_GAME_ID);
-    const attackerName = await this.getPlayerName(data.attacker);
+    let victimWounds = this.playersWounds.get(data.victim.steamID);
+    let attackerWounds = this.playersWounds.get(data.attacker.steamID);
 
-    if (attackerPlaytimeObj.playtime !== TIME_IS_UNKNOWN) {
-      await this.warn(
-        data.victim.steamID,
-        `Ты убит врагом ${attackerName} с ${attackerPlaytimeObj.playtime.toFixed(0)} часами\n\n!reply ТЕКСТ отправит ему сообщение`,
-        this.options.number_of_messages_to_victim
-      );
-    } else {
-      await this.warn(
-        data.victim.steamID,
-        `Ты убит врагом ${attackerName}\n\n!reply ТЕКСТ отправит ему сообщение`,
-        this.options.number_of_messages_to_victim
-      );
+    if (!victimWounds) {
+      victimWounds = new PlayerWounds();
+      this.playersWounds.set(data.victim.steamID, victimWounds);
     }
+
+    if (!attackerWounds) {
+      attackerWounds = new PlayerWounds();
+      this.playersWounds.set(data.attacker.steamID, attackerWounds);
+    }
+
+    attackerWounds.addWound(data.victim.steamID);
+    this.lastAttacker.set(data.victim.steamID, { ...data.attacker, isReplySent: false });
+
+    await this.warn(
+      data.victim.steamID,
+      await this.assembleAttackerMessage(
+        data.attacker,
+        victimWounds.getWounds(data.attacker.steamID),
+        attackerWounds.getWounds(data.victim.steamID)
+      ),
+      this.options.number_of_messages_to_victim
+    );
 
     if (this.server?.currentLayer?.gamemode === "Seed") {
-      let victimPlaytimeObj = await this.steam_api.getPlaytimeByGame(data.victim.steamID, SQUAD_GAME_ID);
+      const victimPlaytime = await this.steam_api.getPlaytimeByGame(data.victim.steamID, SQUAD_GAME_ID);
+      const victimPlaytimeMessage =
+        victimPlaytime.playtime === TIME_IS_UNKNOWN ? "" : ` с ${victimPlaytime.playtime.toFixed(0)} часами`;
 
-      if (victimPlaytimeObj.playtime !== TIME_IS_UNKNOWN) {
-        await this.warn(
-          data.attacker.steamID,
-          `Ты убил игрока ${data.victim.name} с ${victimPlaytimeObj.playtime.toFixed(0)} часами\n\nПродолжай :-) Это сообщение есть только на seed`,
-          1
-        );
-      } else {
-        await this.warn(
-          data.attacker.steamID,
-          `Ты убил игрока ${data.victim.name}\n\nПродолжай :-) Это сообщение есть только на seed`,
-          1
-        );
-      }
+      await this.warn(
+        data.attacker.steamID,
+        `Ты убил игрока ${data.victim.name}${victimPlaytimeMessage}\n\nПродолжай :-) Это сообщение есть только на seed`
+      );
     }
+  }
+
+  async assembleAttackerMessage(player, victimWounds = 0, attackerWounds = 0) {
+    const playerDB = await this.getPlayerFromDB(player.steamID);
+    const playtimeObj = await this.steam_api.getPlaytimeByGame(player.steamID, SQUAD_GAME_ID);
+
+    let name;
+    if (this.options.use_alter_names) {
+      name = playerDB?.name || player.name;
+    } else {
+      name = player.name;
+    }
+
+    let label;
+    if (this.options.use_alter_labels) {
+      label = playerDB?.label || "!reply ТЕКСТ отправит ему твоё сообщение";
+    } else {
+      label = "!reply ТЕКСТ отправит ему твоё сообщение";
+    }
+
+    let playtime = playtimeObj.playtime === TIME_IS_UNKNOWN ? "" : ` с ${playtimeObj.playtime.toFixed(0)} часами`;
+
+    return `Убит врагом ${name}${playtime}\nЛичный счет: ${victimWounds} vs ${attackerWounds}\n${label}`;
+  }
+
+  async getPlayerFromDB(steamID) {
+    return await this.playerAlterName.findOne({
+      where: {
+        steamID: steamID,
+      },
+    });
   }
 
   async warn(playerID, message, repeat = 1, frequency = 5) {
@@ -270,5 +391,21 @@ export default class ShowAttacker extends BasePlugin {
         await new Promise((resolve) => setTimeout(resolve, frequency * 1000));
       }
     }
+  }
+}
+
+class PlayerWounds {
+  constructor() {
+    this.wounds = new Map();
+  }
+
+  addWound(steamID) {
+    const wounds = this.wounds.get(steamID) || 0;
+
+    this.wounds.set(steamID, wounds + 1);
+  }
+
+  getWounds(steamID) {
+    return this.wounds.get(steamID) || 0;
   }
 }
