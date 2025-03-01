@@ -6,4 +6,4 @@
 4) Позволяет отправить 1 сообщение варнами вашему последнему убийце
 
 # Настройка
-Как и любой другой плагин, но перед этим скопируйте в папку `plugins` файл `playtime-searcher.js` из [https://github.com/ar1ocker/Steam-Playtime-Searcher](https://github.com/ar1ocker/Steam-Playtime-Searcher)
+Как и любой другой плагин, но перед этим вам нужно установить [https://github.com/ar1ocker/Playtime-Service](https://github.com/ar1ocker/Playtime-Service), а также скопировать `playtime-service-api.js` в папку `plugins` из репозитория [https://github.com/ar1ocker/Playtime-Service-JS-Lib](https://github.com/ar1ocker/Playtime-Service-JS-Lib)
