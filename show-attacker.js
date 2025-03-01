@@ -1,3 +1,4 @@
+//@ts-check
 import Sequelize from "sequelize";
 import BasePlugin from "./base-plugin.js";
 import { default as PlaytimeSearcher, TIME_IS_UNKNOWN } from "./playtime-searcher.js";
@@ -62,6 +63,11 @@ export default class ShowAttacker extends BasePlugin {
         description: "Commands for remove label",
         default: ["удалитьподпись", "removelabel"],
       },
+
+      is_need_clear_wounds_on_new_game: {
+        required: false,
+        default: false
+      }
 
       show_my_message_commands: {
         required: false,
@@ -130,10 +136,16 @@ export default class ShowAttacker extends BasePlugin {
 
   async mount() {
     this.server.on("NEW_GAME", (data) => {
-      this.playersWounds.clear();
+      if (this.options.is_need_clear_wounds_on_new_game) {
+        this.playersWounds.clear();
+      }
     });
 
     this.server.on("PLAYER_WOUNDED", (data) => {
+      this.verbose(
+        2,
+        `${data.attacker?.steamID} ${data.attacker?.name} kill ${data.victim?.steamID} ${data.victim?.steamID}`
+      );
       if (data.attacker?.steamID && data.victim?.steamID) {
         this.onWound(data);
       }
@@ -346,7 +358,7 @@ export default class ShowAttacker extends BasePlugin {
 
       await this.warn(
         data.attacker.steamID,
-        `Ты убил игрока ${data.victim.name}${victimPlaytimeMessage}\n\nПродолжай :-) Это сообщение есть только на seed`
+        `Ты убил игрока '${data.victim.name}'${victimPlaytimeMessage}\n\nПродолжай :-) Это сообщение есть только на seed`
       );
     }
   }
@@ -371,7 +383,7 @@ export default class ShowAttacker extends BasePlugin {
 
     let playtime = playtimeObj.playtime === TIME_IS_UNKNOWN ? "" : ` с ${playtimeObj.playtime.toFixed(0)} часами`;
 
-    return `Убит врагом ${name}${playtime}\nЛичный счет: ${victimWounds} vs ${attackerWounds}\n${label}`;
+    return `➼ врагом '${name}'${playtime}\nЛич. счет: ${victimWounds} vs ${attackerWounds}\n\n${label}`;
   }
 
   async getPlayerFromDB(steamID) {
@@ -385,7 +397,7 @@ export default class ShowAttacker extends BasePlugin {
   async warn(playerID, message, repeat = 1, frequency = 5) {
     for (let i = 0; i < repeat; i++) {
       // repeat используется для того, чтобы squad выводил все сообщения, а не скрывал их из-за того, что они одинаковые
-      await this.server.rcon.warn(playerID, message + "\u{00A0}".repeat(i));
+      await this.server.rcon.warn(playerID, message + "\u{00A0}".repeat(i).slice(0, 97)); // max symbols by rcon - 97
 
       if (i !== repeat - 1) {
         await new Promise((resolve) => setTimeout(resolve, frequency * 1000));
