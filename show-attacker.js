@@ -1,7 +1,7 @@
 //@ts-check
 import Sequelize from "sequelize";
 import BasePlugin from "./base-plugin.js";
-import { default as PlaytimeSearcher, TIME_IS_UNKNOWN } from "./playtime-searcher.js";
+import { default as PlaytimeServiceAPI, TIME_IS_UNKNOWN } from "./playtime-service-api.js";
 
 const { DataTypes, QueryTypes } = Sequelize;
 
@@ -18,11 +18,17 @@ export default class ShowAttacker extends BasePlugin {
 
   static get optionsSpecification() {
     return {
-      steam_key: {
+      playtime_service_api_url: {
         required: true,
-        description: "The steam api key",
+        description: "URL to Playtime Service API",
         default: "",
       },
+      playtime_service_api_secret_key: {
+        required: true,
+        description: "Secret key for Playtime Service API",
+        default: "",
+      },
+
       commands: {
         required: false,
         description: "Commands to respond to attack",
@@ -66,8 +72,8 @@ export default class ShowAttacker extends BasePlugin {
 
       is_need_clear_wounds_on_new_game: {
         required: false,
-        default: false
-      }
+        default: false,
+      },
 
       show_my_message_commands: {
         required: false,
@@ -117,7 +123,11 @@ export default class ShowAttacker extends BasePlugin {
       }
     );
 
-    this.steam_api = new PlaytimeSearcher(this.options.steam_key);
+    this.playtimeAPI = new PlaytimeServiceAPI(
+      this.options.playtime_service_api_url,
+      this.options.playtime_service_api_secret_key,
+      SQUAD_GAME_ID
+    );
 
     this.lastAttacker = new Map();
 
@@ -352,20 +362,19 @@ export default class ShowAttacker extends BasePlugin {
     );
 
     if (this.server?.currentLayer?.gamemode === "Seed") {
-      const victimPlaytime = await this.steam_api.getPlaytimeByGame(data.victim.steamID, SQUAD_GAME_ID);
-      const victimPlaytimeMessage =
-        victimPlaytime.playtime === TIME_IS_UNKNOWN ? "" : ` с ${victimPlaytime.playtime.toFixed(0)} часами`;
+      const victimPlaytime = await this.getPlayerPlaytime(data.victim.steamID);
+      const victimPlaytimeText = victimPlaytime === TIME_IS_UNKNOWN ? "" : ` с ${victimPlaytime.toFixed(0)} часами`;
 
       await this.warn(
         data.attacker.steamID,
-        `Ты убил игрока '${data.victim.name}'${victimPlaytimeMessage}\n\nПродолжай :-) Это сообщение есть только на seed`
+        `Ты убил игрока '${data.victim.name}'${victimPlaytimeText}\n\nПродолжай :-) Это сообщение есть только на seed`
       );
     }
   }
 
   async assembleAttackerMessage(player, victimWounds = 0, attackerWounds = 0) {
     const playerDB = await this.getPlayerFromDB(player.steamID);
-    const playtimeObj = await this.steam_api.getPlaytimeByGame(player.steamID, SQUAD_GAME_ID);
+    const playerPlaytime = await this.getPlayerPlaytime(player.steamID);
 
     let name;
     if (this.options.use_alter_names) {
@@ -381,9 +390,9 @@ export default class ShowAttacker extends BasePlugin {
       label = "!reply ТЕКСТ отправит ему твоё сообщение";
     }
 
-    let playtime = playtimeObj.playtime === TIME_IS_UNKNOWN ? "" : ` с ${playtimeObj.playtime.toFixed(0)} часами`;
+    let playtimeText = playerPlaytime === TIME_IS_UNKNOWN ? "" : ` с ${playerPlaytime.toFixed(0)} часами`;
 
-    return `➼ врагом '${name}'${playtime}\nЛич. счет: ${victimWounds} vs ${attackerWounds}\n\n${label}`;
+    return `➼ врагом '${name}'${playtimeText}\nЛичный счет: ${victimWounds} vs ${attackerWounds}\n\n${label}`;
   }
 
   async getPlayerFromDB(steamID) {
@@ -392,6 +401,22 @@ export default class ShowAttacker extends BasePlugin {
         steamID: steamID,
       },
     });
+  }
+
+  async getPlayerPlaytime(steamID) {
+    let playtime;
+    try {
+      playtime = await this.playtimeAPI.requestPlaytimeBySteamID(steamID);
+    } catch (error) {
+      this.verbose(1, `Failed to get playtime for ${steamID} with error: ${error}`);
+      return TIME_IS_UNKNOWN;
+    }
+
+    if (playtime.bmPlaytime || playtime.steamPlaytime) {
+      return Math.max(playtime.bmPlaytime, playtime.steamPlaytime) / 60 / 60;
+    }
+
+    return TIME_IS_UNKNOWN;
   }
 
   async warn(playerID, message, repeat = 1, frequency = 5) {
