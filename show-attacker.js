@@ -404,19 +404,18 @@ export default class ShowAttacker extends BasePlugin {
   }
 
   async getPlayerPlaytime(steamID) {
-    let playtime;
     try {
-      playtime = await this.playtimeAPI.requestPlaytimeBySteamID(steamID);
+      const playtimeSec = await this.playtimeAPI.getPlayerMaxSecondsPlaytime(steamID);
+
+      if (playtimeSec === TIME_IS_UNKNOWN) {
+        return playtimeSec;
+      }
+
+      return playtimeSec / 60 / 60;
     } catch (error) {
       this.verbose(1, `Failed to get playtime for ${steamID} with error: ${error}`);
       return TIME_IS_UNKNOWN;
     }
-
-    if (playtime.bmPlaytime || playtime.steamPlaytime) {
-      return Math.max(playtime.bmPlaytime, playtime.steamPlaytime) / 60 / 60;
-    }
-
-    return TIME_IS_UNKNOWN;
   }
 
   async warn(playerID, message, repeat = 1, frequency = 5) {
