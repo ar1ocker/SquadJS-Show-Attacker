@@ -69,6 +69,21 @@ export default class ShowAttacker extends BasePlugin {
         description: "Commands for remove label",
         default: ["удалитьподпись", "removelabel"],
       },
+      enable_attacker_message_commands: {
+        required: false,
+        description: "Commands for enable message about victim to attacker",
+        default: ["показыватьранения", "showwounds"],
+      },
+      disable_attacker_message_commands: {
+        required: false,
+        description: "Commands for disable message about victim to attacker",
+        default: ["скрытьранения", "hidewounds"],
+      },
+      default_attacker_message_status: {
+        required: false,
+        description: "Default status show message about victim to attacker",
+        default: false,
+      },
 
       is_need_clear_wounds_on_new_game: {
         required: false,
@@ -133,6 +148,8 @@ export default class ShowAttacker extends BasePlugin {
 
     this.playersWounds = new Map();
 
+    this.isShowWoundsToAttacker = false;
+
     this.onWound = this.onWound.bind(this);
     this.sendMessageToAttacker = this.sendMessageToAttacker.bind(this);
     this.getPlayerFromDB = this.getPlayerFromDB.bind(this);
@@ -149,6 +166,8 @@ export default class ShowAttacker extends BasePlugin {
       if (this.options.is_need_clear_wounds_on_new_game) {
         this.playersWounds.clear();
       }
+
+      this.isShowWoundsToAttacker = this.options.default_attacker_message_status;
     });
 
     this.server.on("PLAYER_WOUNDED", (data) => {
@@ -161,6 +180,46 @@ export default class ShowAttacker extends BasePlugin {
       }
     });
 
+    this.mountAttackerMessageCommands();
+
+    this.mountReplyCommands();
+
+    if (this.options.use_alter_labels || this.options.use_alter_names) {
+      this.mountInfoCommands();
+    }
+
+    if (this.options.use_alter_labels) {
+      this.mountLabelsCommands();
+    }
+
+    if (this.options.use_alter_names) {
+      this.mountAlterNamesCommands();
+    }
+  }
+
+  mountAttackerMessageCommands() {
+    for (const command of this.options.enable_attacker_message_commands) {
+      this.server.on(`CHAT_COMMAND:${command}`, (data) => {
+        if (data.player?.steamID) {
+          this.processEnableAttackerMessages(data);
+        }
+      });
+    }
+
+    for (const command of this.options.disable_attacker_message_commands) {
+      this.server.on(`CHAT_COMMAND:${command}`, (data) => {
+        if (data.player?.steamID) {
+          this.processDisableAttackerMessages(data);
+        }
+      });
+    }
+
+    this.server.on("NEW_GAME", (data) => {
+      this.isShowWoundsToAttacker = this.options.default_attacker_message_status;
+    });
+  }
+
+  mountReplyCommands() {
     for (const command of this.options.commands) {
       this.server.on(`CHAT_COMMAND:${command}`, (data) => {
         if (data.message && data.player?.steamID) {
@@ -168,57 +227,57 @@ export default class ShowAttacker extends BasePlugin {
         }
       });
     }
+  }
 
-    if (this.options.use_alter_labels || this.options.use_alter_names) {
-      for (const command of this.options.show_my_message_commands) {
-        this.server.on(`CHAT_COMMAND:${command}`, (data) => {
-          if (data.player?.steamID) {
-            this.showMyMessage(data);
-          }
-        });
-      }
+  mountInfoCommands() {
+    for (const command of this.options.show_my_message_commands) {
+      this.server.on(`CHAT_COMMAND:${command}`, (data) => {
+        if (data.player?.steamID) {
+          this.showMyMessage(data);
+        }
+      });
+    }
+  }
+
+  mountLabelsCommands() {
+    for (const command of this.options.update_label_commands) {
+      this.server.on(`CHAT_COMMAND:${command}`, (data) => {
+        if (data.message && data.player?.steamID) {
+          this.updateLabel(data);
+        }
+      });
     }
 
-    if (this.options.use_alter_names) {
-      for (const command of this.options.update_name_commands) {
-        this.server.on(`CHAT_COMMAND:${command}`, (data) => {
-          if (data.message && data.player?.steamID) {
-            this.updateName(data);
-          }
-        });
-      }
-      for (const command of this.options.remove_name_commands) {
-        this.server.on(`CHAT_COMMAND:${command}`, (data) => {
-          if (data.player?.steamID) {
-            this.removeName(data);
-          }
-        });
-      }
-      for (const command of this.options.show_real_attacker_name_commands) {
-        this.server.on(`CHAT_COMMAND:${command}`, (data) => {
-          if (data.player?.steamID) {
-            this.showRealAttackerName(data);
-          }
-        });
-      }
+    for (const command of this.options.remove_label_commands) {
+      this.server.on(`CHAT_COMMAND:${command}`, (data) => {
+        if (data.player?.steamID) {
+          this.removeLabel(data);
+        }
+      });
     }
+  }
 
-    if (this.options.use_alter_labels) {
-      for (const command of this.options.update_label_commands) {
-        this.server.on(`CHAT_COMMAND:${command}`, (data) => {
-          if (data.message && data.player?.steamID) {
-            this.updateLabel(data);
-          }
-        });
-      }
-
-      for (const command of this.options.remove_label_commands) {
-        this.server.on(`CHAT_COMMAND:${command}`, (data) => {
-          if (data.player?.steamID) {
-            this.removeLabel(data);
-          }
-        });
-      }
+  mountAlterNamesCommands() {
+    for (const command of this.options.update_name_commands) {
+      this.server.on(`CHAT_COMMAND:${command}`, (data) => {
+        if (data.message && data.player?.steamID) {
+          this.updateName(data);
+        }
+      });
+    }
+    for (const command of this.options.remove_name_commands) {
+      this.server.on(`CHAT_COMMAND:${command}`, (data) => {
+        if (data.player?.steamID) {
+          this.removeName(data);
+        }
+      });
+    }
+    for (const command of this.options.show_real_attacker_name_commands) {
+      this.server.on(`CHAT_COMMAND:${command}`, (data) => {
+        if (data.player?.steamID) {
+          this.showRealAttackerName(data);
+        }
+      });
     }
   }
 
@@ -287,7 +346,7 @@ export default class ShowAttacker extends BasePlugin {
   }
 
   async showRealAttackerName(data) {
-    const attacker = this.lastAttacker.get(data.player.steamID);
+    const attacker = this.getLastAttacker(data.player.steamID);
 
     if (attacker) {
       await this.warn(data.player.steamID, `Реальное имя твоего последнего убийцы: ${attacker.name}`);
@@ -297,7 +356,7 @@ export default class ShowAttacker extends BasePlugin {
   }
 
   async sendMessageToAttacker(data) {
-    const attacker = this.lastAttacker.get(data.player.steamID);
+    const attacker = this.getLastAttacker(data.player.steamID);
 
     if (!attacker) {
       await this.warn(data.player.steamID, `Не нашли твоего последнего убийцу`);
@@ -328,48 +387,91 @@ export default class ShowAttacker extends BasePlugin {
 
   async onWound(data) {
     if (data.teamkill) {
-      await Promise.all([
-        this.warn(data.victim.steamID, `Ты убит игроком твоей команды ${data.attacker.name}`, 1),
-        this.warn(data.attacker.steamID, `Ты убил союзника! ${data.victim.name}. Извинись перед ним!`, 2),
-      ]);
+      await this.sendTeamkillMessages(data);
       return;
     }
 
-    let victimWounds = this.playersWounds.get(data.victim.steamID);
-    let attackerWounds = this.playersWounds.get(data.attacker.steamID);
-
-    if (!victimWounds) {
-      victimWounds = new PlayerWounds();
-      this.playersWounds.set(data.victim.steamID, victimWounds);
-    }
-
-    if (!attackerWounds) {
-      attackerWounds = new PlayerWounds();
-      this.playersWounds.set(data.attacker.steamID, attackerWounds);
-    }
-
+    let attackerWounds = this.getPlayerWounds(data.attacker.steamID);
     attackerWounds.addWound(data.victim.steamID);
-    this.lastAttacker.set(data.victim.steamID, { ...data.attacker, isReplySent: false });
 
-    await this.warn(
-      data.victim.steamID,
-      await this.assembleAttackerMessage(
-        data.attacker,
-        victimWounds.getWounds(data.attacker.steamID),
-        attackerWounds.getWounds(data.victim.steamID)
-      ),
-      this.options.number_of_messages_to_victim
+    this.setLastAttacker(data.attacker, data.victim);
+
+    await this.sendMessageToVictimAboutAttacker(data);
+
+    if (this.server.currentLayer?.gamemode === "Seed" || this.isShowWoundsToAttacker) {
+      await this.sendMessageToAttackerAboutVictim(data);
+    }
+  }
+
+  async sendTeamkillMessages(data) {
+    await Promise.all([
+      this.warn(data.victim.steamID, `Ты убит игроком твоей команды ${data.attacker.name}`, 1),
+      this.warn(data.attacker.steamID, `Ты убил союзника! ${data.victim.name}. Извинись перед ним!`, 2),
+    ]);
+  }
+
+  async sendMessageToVictimAboutAttacker(data) {
+    let victimWounds = this.getPlayerWounds(data.victim.steamID);
+    let attackerWounds = this.getPlayerWounds(data.attacker.steamID);
+
+    const message = await this.assembleAttackerMessage(
+      data.attacker,
+      victimWounds.getWounds(data.attacker.steamID),
+      attackerWounds.getWounds(data.victim.steamID)
     );
 
-    if (this.server?.currentLayer?.gamemode === "Seed") {
-      const victimPlaytime = await this.getPlayerPlaytime(data.victim.steamID);
-      const victimPlaytimeText = victimPlaytime === TIME_IS_UNKNOWN ? "" : ` с ${victimPlaytime.toFixed(0)} часами`;
+    await this.warn(data.victim.steamID, message, this.options.number_of_messages_to_victim);
+  }
 
-      await this.warn(
-        data.attacker.steamID,
-        `Ты убил игрока '${data.victim.name}'${victimPlaytimeText}\n\nПродолжай :-) Это сообщение есть только на seed`
-      );
+  async sendMessageToAttackerAboutVictim(data) {
+    let victimWounds = this.getPlayerWounds(data.victim.steamID);
+    let attackerWounds = this.getPlayerWounds(data.attacker.steamID);
+
+    const victimPlaytime = await this.getPlayerPlaytime(data.victim.steamID);
+    const victimPlaytimeText = victimPlaytime === TIME_IS_UNKNOWN ? "" : ` с ${victimPlaytime.toFixed(0)} часами`;
+
+    await this.warn(
+      data.attacker.steamID,
+      `Ты убил игрока '${data.victim.name}'${victimPlaytimeText} нанеся ${data.damage.toFixed(0)} урона!\nЛичный счет: ${attackerWounds.getWounds(data.victim.steamID)} vs ${victimWounds.getWounds(data.attacker.steamID)}`
+    );
+  }
+
+  async processEnableAttackerMessages(data) {
+    if (!this.checkPlayerPermission(data.player.steamID, "kick")) {
+      this.warn(data.player.steamID, "У вас нет прав для выполнения этой команды");
+      return;
     }
+
+    this.isShowWoundsToAttacker = true;
+    this.verbose(1, `${data.player.steamID} / ${data.player.name} запустил сообщения о ранениях`);
+    this.warn(data.player.steamID, "Сообщения о ранениях включены");
+  }
+
+  async processDisableAttackerMessages(data) {
+    if (!this.checkPlayerPermission(data.player.steamID, "kick")) {
+      this.warn(data.player.steamID, "У вас нет прав для выполнения этой команды");
+      return;
+    }
+
+    this.isShowWoundsToAttacker = false;
+    this.verbose(1, `${data.player.steamID} / ${data.player.name} выключил сообщения о ранениях`);
+    this.warn(data.player.steamID, "Сообщения о ранениях выключены");
+  }
+
+  /**
+   *
+   * @param {*} steamID
+   * @returns {PlayerWounds}
+   */
+  getPlayerWounds(steamID) {
+    let playerWounds = this.playersWounds.get(steamID);
+
+    if (!playerWounds) {
+      playerWounds = new PlayerWounds();
+      this.playersWounds.set(steamID, playerWounds);
+    }
+
+    return playerWounds;
   }
 
   async assembleAttackerMessage(player, victimWounds = 0, attackerWounds = 0) {
@@ -392,7 +494,20 @@ export default class ShowAttacker extends BasePlugin {
 
     let playtimeText = playerPlaytime === TIME_IS_UNKNOWN ? "" : ` с ${playerPlaytime.toFixed(0)} часами`;
 
-    return `➼ врагом '${name}'${playtimeText}\nЛичный счет: ${victimWounds} vs ${attackerWounds}\n\n${label}`;
+    return `Ты убит врагом '${name}'${playtimeText}\nЛичный счет: ${victimWounds} vs ${attackerWounds}\n\n${label}`;
+  }
+
+  setLastAttacker(attacker, victim) {
+    this.lastAttacker.set(victim.steamID, new OnetimeReply(attacker.steamID, attacker.name));
+  }
+
+  /**
+   *
+   * @param {*} victimSteamID
+   * @returns {OnetimeReply}
+   */
+  getLastAttacker(victimSteamID) {
+    return this.lastAttacker.get(victimSteamID);
   }
 
   async getPlayerFromDB(steamID) {
@@ -428,6 +543,16 @@ export default class ShowAttacker extends BasePlugin {
       }
     }
   }
+
+  checkPlayerPermission(steamID, permission) {
+    const permissions = this.server.getAdminPermsBySteamID(steamID);
+
+    if (permissions && permission in permissions) {
+      return true;
+    }
+
+    return false;
+  }
 }
 
 class PlayerWounds {
@@ -443,5 +568,13 @@ class PlayerWounds {
 
   getWounds(steamID) {
     return this.wounds.get(steamID) || 0;
+  }
+}
+
+class OnetimeReply {
+  constructor(steamID, name) {
+    this.isReplySent = false;
+    this.steamID = steamID;
+    this.name = name;
   }
 }
